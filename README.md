@@ -84,7 +84,5 @@ Total linhas: 21  Código: 7  Comentários: 6  Vazias: 8
 - Adicionar `--exclude`/`--include` com suporte a globs (ex.: ignorar `venv`/`__pycache__`).
 - Filtrar automaticamente ambientes virtuais e caches.
 - Suporte a interface gráfica (`tkinter.filedialog`) para seleção de pastas no Windows.
-
-Se quiser que eu implemente alguma dessas melhorias (por exemplo `--exclude`), diga qual e eu adiciono.
  
 ---
