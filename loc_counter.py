@@ -23,9 +23,16 @@ import ast
 import json
 from typing import Set, Tuple, List
 
+# Observações rápidas sobre dependências:
+# - `os`/`sys` para manipular caminhos e argumentos.
+# - `tokenize` para detectar comentários linha a linha.
+# - `ast` para identificar docstrings (strings que aparecem como primeiro nó do corpo).
+# - `json` para saída estruturada quando solicitado.
+
 
 def find_py_files(path: str) -> List[str]:
     """Retorna lista de arquivos .py a partir de um caminho (arquivo ou diretório recursivo)."""
+    # Se o usuário passou um arquivo .py, retorna apenas esse arquivo
     if os.path.isfile(path) and path.endswith('.py'):
         return [os.path.abspath(path)]
     files = []
@@ -116,21 +123,24 @@ def docstring_line_numbers(source: str) -> Set[int]:
     """
     lines = source.splitlines()
     doc_lines: Set[int] = set()
+    # Tenta construir o AST do código fonte. Se não for possível (arquivo inválido),
+    # retornamos conjunto vazio — não consideramos docstrings nesse caso.
     try:
         tree = ast.parse(source)
     except Exception:
         return doc_lines
 
+    # Percorre a árvore AST buscando nós que podem ter docstrings
     for node in ast.walk(tree):
         if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             body = getattr(node, 'body', None)
             if not body:
                 continue
             first = body[0]
-            # Docstring é um ast.Expr com ast.Constant (string) em Python 3.8+
+            # Em Python 3.8+, uma docstring aparece como ast.Expr com ast.Constant contendo uma str
             if isinstance(first, ast.Expr) and isinstance(getattr(first, 'value', None), ast.Constant) and isinstance(first.value.value, str):
                 start = first.lineno
-                # Conte quantas linhas a string tem
+                # Calcula quantas linhas a docstring ocupa e marca cada linha
                 docstring_value = first.value.value
                 span = docstring_value.count('\n') + 1
                 for i in range(start, start + span):
@@ -143,6 +153,8 @@ def count_lines_in_file(path: str) -> Tuple[int, int, int, int]:
 
     Retorna tupla: (total, code, comments, blanks)
     """
+    # Lê todo o conteúdo do arquivo como texto (UTF-8). Se houver erro aqui,
+    # deixamos a exceção propagar para que o chamador possa decidir o que fazer.
     try:
         with open(path, 'r', encoding='utf-8') as f:
             source = f.read()
@@ -152,7 +164,8 @@ def count_lines_in_file(path: str) -> Tuple[int, int, int, int]:
     lines = source.splitlines()
     total = len(lines)
 
-    # detectar comentários via tokenize
+    # Detecta comentários de linha usando o gerador de tokens. Cada token do tipo
+    # COMMENT fornece a linha onde o comentário está — marcamos essas linhas.
     comment_lines: Set[int] = set()
     try:
         token_gen = tokenize.generate_tokens(io.StringIO(source).readline)
@@ -161,15 +174,18 @@ def count_lines_in_file(path: str) -> Tuple[int, int, int, int]:
                 lineno = start[0]
                 comment_lines.add(lineno)
     except Exception:
+        # Em casos raros (arquivos malformados), tokenize pode falhar; ignoramos
+        # e continuamos sem marcar comentários via tokenize.
         pass
 
-    # detectar docstrings via ast
+    # Detecta docstrings analisando o AST (linhas ocupadas pelas docstrings)
     doc_lines = docstring_line_numbers(source)
 
     code = 0
     comments = 0
     blanks = 0
 
+    # Percorre todas as linhas e classifica cada uma em código, comentário ou vazia
     for idx, raw in enumerate(lines, start=1):
         stripped = raw.strip()
         if stripped == '':
@@ -187,11 +203,12 @@ def analyze(path: str) -> dict:
     files = find_py_files(path)
     results = {}
     agg = {'files': 0, 'total': 0, 'code': 0, 'comments': 0, 'blanks': 0}
+    # Para cada arquivo Python encontrado, conta as linhas e acumula os totais
     for f in sorted(files):
         try:
             total, code, comments, blanks = count_lines_in_file(f)
         except Exception as e:
-            # pular arquivos que não podem ser lidos
+            # Se não conseguimos ler/parsear um arquivo, apenas o ignoramos
             continue
         results[f] = {'total': total, 'code': code, 'comments': comments, 'blanks': blanks}
         agg['files'] += 1
@@ -203,25 +220,30 @@ def analyze(path: str) -> dict:
 
 
 def main(argv=None):
+    # Parser de argumentos: aceita um caminho opcional e a flag --json
     parser = argparse.ArgumentParser(description='Conta linhas de código Python (ignora comentários e linhas vazias).')
     parser.add_argument('path', nargs='?', default=None, help='Arquivo .py ou diretório a analisar (se omitido, modo interativo)')
     parser.add_argument('--json', action='store_true', help='Imprime saída em JSON')
     args = parser.parse_args(argv)
 
     path = args.path
+    # Se o usuário não informou caminho, usamos o seletor interativo
     if path is None:
         print("Nenhum caminho informado — entrando em modo interativo para escolha do arquivo/pasta.")
         path = interactive_choose(os.getcwd())
 
+    # Valida que o caminho existe antes de prosseguir
     if not os.path.exists(path):
         print(f"Caminho não encontrado: {path}")
         sys.exit(2)
 
+    # Executa a análise e exibe o resultado em JSON ou em formato legível
     res = analyze(path)
     if args.json:
         print(json.dumps(res, indent=2, ensure_ascii=False))
         return
 
+    # Impressão legível: por arquivo e agregados ao final
     agg = res['aggregate']
     for f, stats in res['files'].items():
         print(f"Arquivo: {f}")
