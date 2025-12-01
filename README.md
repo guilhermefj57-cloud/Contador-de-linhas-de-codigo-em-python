@@ -88,5 +88,3 @@ Total linhas: 21  Código: 7  Comentários: 6  Vazias: 8
 Se quiser que eu implemente alguma dessas melhorias (por exemplo `--exclude`), diga qual e eu adiciono.
  
 ---
-
-Quer algo mais? Me diz o tom: "sério" ou "massa" — que eu transformo o README do seu jeito.
